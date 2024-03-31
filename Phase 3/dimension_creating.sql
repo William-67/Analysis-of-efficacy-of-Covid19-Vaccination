@@ -43,7 +43,8 @@ CREATE TABLE FactTable (
     vacID INTEGER,
     covidID INTEGER,
     province VARCHAR(2),
-    resolved INTEGER,
+    totalCases INTEGER,
+    recovery INTEGER,
     death INTEGER,
     PRIMARY KEY (dateID, vacID, covidID, province),
     FOREIGN KEY (dateID) REFERENCES DateDimension(dateID),
@@ -4304,16 +4305,92 @@ INSERT INTO VaccinationDimension VALUES ('2039', '157', 'YT', '92743', '35380', 
 INSERT INTO VaccinationDimension VALUES ('2040', '157', 'NT', '102863', '39663', '20278');
 INSERT INTO VaccinationDimension VALUES ('2041', '157', 'NU', '77083', '29021', '14519');
 
-INSERT INTO FactTable (DateID, VacID, CovidID, Province, Resolved, Death)
+-- Add new columns for change in partial, fully, and booster
+ALTER TABLE VaccinationDimension
+ADD COLUMN partial_change INT,
+ADD COLUMN fully_change INT,
+ADD COLUMN booster_change INT;
+
+-- Set the changes to 0 for the first date
+UPDATE VaccinationDimension
+SET partial_change = 0, fully_change = 0, booster_change = 0
+WHERE dateID = (SELECT MIN(dateID) FROM VaccinationDimension);
+
+-- Calculate the changes for subsequent dates
+WITH cte AS (
+  SELECT
+    vacID,
+    dateID,
+    province,
+    partial,
+    fully,
+    booster,
+    LAG(partial, 1) OVER (PARTITION BY province ORDER BY dateID) AS prev_partial,
+    LAG(fully, 1) OVER (PARTITION BY province ORDER BY dateID) AS prev_fully,
+    LAG(booster, 1) OVER (PARTITION BY province ORDER BY dateID) AS prev_booster
+  FROM VaccinationDimension
+)
+UPDATE VaccinationDimension vd
+SET partial_change = vd.partial - cte.prev_partial,
+    fully_change = vd.fully - cte.prev_fully,
+    booster_change = vd.booster - cte.prev_booster
+FROM cte
+WHERE vd.vacID = cte.vacID
+  AND vd.dateID = cte.dateID
+  AND vd.province = cte.province
+  AND vd.dateID > (SELECT MIN(dateID) FROM VaccinationDimension);
+
+
+INSERT INTO FactTable (DateID, VacID, CovidID, Province, totalCases,recovery, Death)
 SELECT
     dd.DateID,
     vd.VacID,
     cmd.CovidID,
     pd.Province,
-    cmd.Recovery AS Resolved,
+    cmd.totalCases AS TotalCases,
+    cmd.Recovery AS Recovery,
     cmd.NumDeaths AS Death
 FROM
     DateDimension dd
     JOIN VaccinationDimension vd ON dd.DateID = vd.DateID
     JOIN COVID19MetricsDimension cmd ON dd.DateID = cmd.DateID AND vd.Province = cmd.Province
     JOIN ProvinceDimension pd ON vd.Province = pd.Province;
+
+-- Add new columns for change in totalCases, recovery, and death
+ALTER TABLE FactTable
+ADD COLUMN totalCases_change INT,
+ADD COLUMN recovery_change INT,
+ADD COLUMN death_change INT;
+
+-- Set the changes to 0 for the first date
+UPDATE FactTable
+SET totalCases_change = 0, recovery_change = 0, death_change = 0
+WHERE dateID = (SELECT MIN(dateID) FROM FactTable);
+
+-- Calculate the changes for subsequent dates
+WITH cte AS (
+  SELECT
+    dateID,
+    vacID,
+    covidID,
+    province,
+    totalCases,
+    recovery,
+    death,
+    LAG(totalCases, 1) OVER (PARTITION BY province ORDER BY dateID) AS prev_totalCases,
+    LAG(recovery, 1) OVER (PARTITION BY province ORDER BY dateID) AS prev_recovery,
+    LAG(death, 1) OVER (PARTITION BY province ORDER BY dateID) AS prev_death
+  FROM FactTable
+)
+UPDATE FactTable ft
+SET totalCases_change = ft.totalCases - cte.prev_totalCases,
+    recovery_change = ft.recovery - cte.prev_recovery,
+    death_change = ft.death - cte.prev_death
+FROM cte
+WHERE ft.dateID = cte.dateID
+  AND ft.vacID = cte.vacID
+  AND ft.covidID = cte.covidID
+  AND ft.province = cte.province
+  AND ft.dateID > (SELECT MIN(dateID) FROM FactTable);
+
+
