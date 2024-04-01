@@ -1,5 +1,6 @@
 # Instruction
-***Phase 2***
+**Phase 2**
+
 In phase 2, there are lots of files, created by different method. Here is the explanation of it.
   1.  For ETL process, run only the **data_cleaning.ipynb** file. This file perform data cleaning and load the final data into the csv file called **final_result.csv**.
         This file also create a script call **data_loading.sql**, which is used to load the **final_result.csv** into database (in our case, PostgreSQL). 
@@ -7,4 +8,10 @@ In phase 2, there are lots of files, created by different method. Here is the ex
        **covid19_metrics_dimension.csv**, **date_dimension.csv**, **province_dimension.csv** and **vaccination_dimension.csv**.
        In addition, it will create a script called **dimension_creating.sql**, which is used to create relational schema in DBMS.
   
-  Method 2 is added for better OLAP query and BI dashboard.
+  Method 2 is added for better OLAP query and BI dashboard. Method 1 is enough for viewing. 
+
+**Phase 3**
+
+OLAP query are available now! Step for OLAP:
+1. Use **dimension_creating.sql** get from phase 2, load into database
+2. Run each query in **OLAP.sql**
